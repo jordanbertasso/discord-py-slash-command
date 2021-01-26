@@ -1,7 +1,7 @@
 import logging
 import typing
 import discord
-from inspect import iscoroutinefunction, getdoc
+from inspect import getdoc, getfullargspec, iscoroutinefunction
 from discord.ext import commands
 from . import http
 from . import model
@@ -427,7 +427,7 @@ class SlashCommand:
               auto_convert: dict = None,
               guild_id: int = None,
               guild_ids: typing.List[int] = None,
-              options: typing.List[dict] = None):
+              options: typing.List[dict] = []):
         """
         Decorator that registers coroutine as a slash command.\n
         All decorator args must be passed as keyword-only args.\n
@@ -482,8 +482,35 @@ class SlashCommand:
             guild_ids = [guild_id]
 
         def wrapper(cmd):
-            self.add_slash_command(cmd, name, description, auto_convert, guild_ids, options)
-            return cmd
+            fullargs = getfullargspec(cmd)
+            nargs = len(fullargs.args)
+            if not options and nargs > 1:
+
+                type_numbers = {str: 3, int: 4, bool: 5}
+
+                for i, argname in enumerate(fullargs.args):
+                    if i == 0:
+                        continue
+
+                    type = fullargs.annotations[argname]
+
+                    option = manage_commands.create_option(
+                        name=argname,
+                        description=argname,
+                        option_type=type_numbers[type],
+                        required=True)
+                    options.append(option)
+
+            if options:
+                # Overrides original auto_convert.
+                auto_convert = {}
+                for x in options:
+                    if x["type"] < 3:
+                        raise Exception("Please use `subcommand()` decorator for subcommands!")
+                    auto_convert[x["name"]] = x["type"]
+
+                self.add_slash_command(cmd, name, description, auto_convert, guild_ids, options)
+                return cmd
 
         return wrapper
 
